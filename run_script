@@ -1,0 +1,25 @@
+#!/bin/bash
+
+set -e
+
+STEPS=(`cd input && ls -d ??.*`)
+
+for STEP in ${STEPS[@]}; do
+    echo ${STEP}
+
+    if [ -d ${STEP} ]; then
+        if [ ! -f ${STEP}/DONE ]; then
+            rm -rf ${STEP}
+        else
+            continue
+        fi
+    fi
+
+    cp -r input/${STEP} .
+
+    cd ${STEP}
+        bash run
+    cd ..
+
+    if [ -f ${STEP}/STOP ]; then break; fi
+done

@@ -1,0 +1,11 @@
+#!/bin/bash
+
+cp -r ../05.merge/complex.{gro,top} .
+
+gmx solvate -cp complex.gro -p complex.top -o complex_sol.gro -cs water.gro -radius 0.21 || exit 1
+
+awk '/W        W/ {++w} END {print "W", w}' complex_sol.gro >> complex.top
+
+rm -f \#*
+
+touch DONE

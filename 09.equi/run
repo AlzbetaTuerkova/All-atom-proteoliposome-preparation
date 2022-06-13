@@ -1,0 +1,11 @@
+#!/bin/bash
+
+cp -r ../08.minim_sol/{complex.top,toppar,min.gro,ref.gro} .
+
+gmx make_ndx -f min.gro << EOF
+13 | 14 | 15
+16 | 17
+q
+EOF
+
+touch STOP

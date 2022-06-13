@@ -1,0 +1,16 @@
+#!/bin/bash
+
+gmx editconf -f ../03.vesicle_box/membrane_box.gro -o membrane_box.pdb || exit 1
+gmx editconf -f ../04.align_prot/NH2-Gly_CG_aligned.gro -o NH2-Gly_CG_aligned.pdb  || exit 1
+
+awk '/ATOM/ {print $0}' NH2-Gly_CG_aligned.pdb membrane_box.pdb > complex.pdb
+gmx editconf -f complex.pdb -o complex.gro -box `tail -1 ../03.vesicle_box/membrane_box.gro` || exit 1
+
+cp -r ../01.strech_pore/toppar .
+awk 'NF == 2 && $1 ~ /Protein/ {$1 = "Protein"} {print}' ../02.martinize_prot/Protein*.itp > toppar/Protein.itp
+
+awk '/^;/ {next} {print} /ions.itp/ {print "#include \"toppar/Protein.itp\""} /molecules/ {print "Protein 9"}' ../01.strech_pore/lipid.top > complex.top
+
+rm -f \#*
+
+touch DONE

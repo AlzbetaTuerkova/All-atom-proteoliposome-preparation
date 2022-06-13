@@ -1,0 +1,18 @@
+#include "toppar/martini_v2.2.itp"
+#include "toppar/martini_v2.0_lipids_all_201506.itp"
+#include "toppar/martini_v2.0_ions.itp"
+
+
+
+[ system ]
+; name
+Martini system
+
+[ molecules ]
+; name        number
+CHOL 1755
+POPC 658
+POPE 1974
+CHOL 1399
+POPC 524
+POPE 1574

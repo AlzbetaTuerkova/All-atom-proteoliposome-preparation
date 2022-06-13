@@ -1,0 +1,13 @@
+#!/bin/bash
+
+export GMX_MAXCONSTRWARN=-1
+
+cp -r ../07.add_ion/{complex.top,toppar,complex_sol_ion.gro} .
+cp ../03.vesicle_box/ref.gro .
+
+awk '/POP[CE]/ || /CHOL/ {printf "%s%8.3f%8.3f%8.3f\n", substr($0, 1, 20), 18, 18, 25; next} {print}' complex_sol_ion.gro > ref.gro
+
+gmx grompp -f martini_v2.x_min.mdp -c complex_sol_ion.gro -p complex.top -r ref.gro -o min.tpr || exit 1
+gmx mdrun -rdd 1.6 -deffnm min -v || exit 1
+
+touch DONE

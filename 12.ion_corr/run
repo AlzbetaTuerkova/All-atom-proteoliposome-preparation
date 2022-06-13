@@ -1,0 +1,33 @@
+#!/bin/bash
+
+export LD_LIBRARY_PATH="/home/alzbetat/libopenblas/lib/:$LD_LIBRARY_PATH"
+
+module load cuda/7.5
+
+
+cp -r ../11.backmapping/*.ff .
+cp ../11.backmapping/0-backward.gro .
+cp ../11.backmapping/backmapped.* .
+
+touch ions.mdp
+
+
+# calculate number of ions
+
+N_W=`awk '/OW/ {print $0}' 0-backward.gro | wc -l`
+echo ${N_W}
+
+
+N_IONS=`echo "(${N_W}*0.15)/55.5556" | bc`
+echo ${N_IONS}
+
+
+
+echo "q" | /home/kasson/gromacs/build2018/bin/gmx make_ndx -f 0-backward.gro
+
+/home/kasson/gromacs/build2018/bin/gmx grompp -f ions.mdp -c 0-backward.gro -p backmapped.top -o ions.tpr -maxwarn 1
+
+echo "19" | /home/kasson/gromacs/build2018/bin/gmx genion -p backmapped.top -s ions.tpr -nn ${N_IONS} -np ${N_IONS} -n index.ndx -o 0-backward_ion.gro -neutral
+
+
+touch DONE

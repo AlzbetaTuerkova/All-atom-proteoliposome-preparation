@@ -1,0 +1,11 @@
+#!/bin/bash
+
+sed 's/OC1/O  /g' ../input/NH2-Gly.pdb > NH2-Gly_renamed.pdb
+
+python martinize.py -f NH2-Gly_renamed.pdb -o protein.top -x NH2-Gly_CG.pdb -dssp ./dssp-2.0.4-linux-amd64 -p backbone -ff martini22
+gmx editconf -f NH2-Gly_CG.pdb -o NH2-Gly_CG.gro
+
+awk 'BEGIN {n = 0; prev = 0} ! /ATOM/ {next} {n = int(substr($0, 23, 4))} n < prev {exit} {print; prev = n}' NH2-Gly_renamed.pdb > monomer.pdb
+python martinize.py -f monomer.pdb -o protein.top -x monomer_CG.pdb -dssp ./dssp-2.0.4-linux-amd64 -p backbone -ff martini22
+
+if [ -f NH2-Gly_CG.gro ] && [ -f monomer_CG.pdb ]; then touch DONE; fi

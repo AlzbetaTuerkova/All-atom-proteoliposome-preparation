@@ -1,0 +1,77 @@
+#!/bin/bash
+
+export LD_LIBRARY_PATH="/home/alzbetat/libopenblas/lib/:$LD_LIBRARY_PATH"
+
+module load cuda/7.5
+
+
+cp ../09.equi/npt5.gro .
+cp ../09.equi/topol_new.top .
+
+
+N_W_ORIG=`awk '/W/ {print $0}' npt5.gro | wc -l`
+
+echo "Original number of water molecules:" ${N_W_ORIG}
+
+
+
+# replace NA ions to W particles
+
+
+sed -i 's/NA/   W/g' npt5.gro
+
+sed -i 's/ION/W/g' npt5.gro 
+
+
+
+
+# Update topology file
+touch topol.top
+
+tee -a topol.top << EOF
+
+#include "charmm36-feb2021.ff/forcefield.itp"
+#include "charmm36-feb2021.ff/singlechain_charmm_nprot.itp"
+
+; Include water topology
+#include "charmm36-feb2021.ff/tip3p.itp"
+
+#ifdef POSRES_WATER
+; Position restraint for each water oxygen
+[ position_restraints ]
+;  i funct       fcx        fcy        fcz
+   1    1       1000       1000       1000
+#endif
+
+; Include topology for ions
+#include "charmm36-feb2021.ff/ions.itp"
+#include "charmm36-feb2021.ff/popc.itp"
+#include "charmm36-feb2021.ff/pope.itp"
+#include "charmm36-feb2021.ff/chol.itp"
+
+
+[ system ]
+; name
+FP_membrane in water
+
+EOF
+
+N_W_UPDATE=`awk '/W/ {print $0}' npt5.gro | wc -l`
+
+echo "Updated number of water mmolecules:" ${N_W_UPDATE}
+
+awk '/NA/ || /W/ {next} {print $0}' topol_new.top > topol_e.top
+
+echo "SOL" ${N_W_UPDATE} >> topol_e.top
+
+sed -i 's/Protein_X/Protein_nprot/g' topol_e.top
+
+sed -n -e '/molecules/,$p' topol_e.top > topol_pre.top
+ 
+cat topol.top topol_pre.top > topol_final.top
+
+rm topol.top topol_pre.top topol_e.top topol_new.top
+
+mv topol_final.top topol.top
+
+touch DONE

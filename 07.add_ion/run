@@ -1,0 +1,16 @@
+#!/bin/bash
+
+touch ions.mdp
+
+cp -r ../05.merge/toppar .
+cp ../06.solvate/{complex_sol.gro,complex.top} .
+
+gmx grompp -f ions.mdp -c complex_sol.gro -p complex.top -o ions.tpr || exit 1
+
+echo "q" | gmx make_ndx -f complex_sol.gro
+
+echo 16 | gmx genion -p complex.top -s ions.tpr -neutral -nname CL -pname NA -n index.ndx -o complex_sol_ion.gro || exit 1
+
+rm -f \#*
+
+touch DONE

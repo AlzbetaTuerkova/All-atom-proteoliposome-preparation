@@ -1,0 +1,140 @@
+#!/bin/bash
+
+cp ../12.ion_corr/0-backward_ion.gro min.gro
+cp ../12.ion_corr/backmapped.* .
+cp -r ../12.ion_corr/*ff .
+
+GRO=min.gro
+
+export LD_LIBRARY_PATH="/home/alzbetat/libopenblas/lib/:$LD_LIBRARY_PATH"
+
+module load cuda/11.2
+module load python/3.6.5
+
+
+
+mkdir -p input
+cp -r ${GRO} charmm36-feb2021.ff *.mdp backmapped.ndx input/
+
+sed -i 's/posre_nneut.itp/posre.itp/g' input/charmm36-feb2021.ff/singlechain_charmm_nneut.itp
+
+awk '/Position restraint file/ {skip = 1} !skip {print} /endif/ {skip = 0}' backmapped.top | cat -s > input/backmapped.top
+
+awk '
+BEGIN { print "[ position_restraints ]" }
+
+/\[ atoms \]/ { a = 1 }
+
+/\[ bonds \]/ { exit }
+
+a > 0 && ($5 ~ /^CA$/ || $5 ~ /^[CNO]$/) {
+    printf "%6d %5d %6d %6d %6d\n", $6, 1, 1000, 1000, 1000
+}
+
+' input/charmm36-feb2021.ff/singlechain_charmm_nneut.itp > input/charmm36-feb2021.ff/posre.itp
+
+PFORCE_STAGE="-pforce 1e20 -nsteps 1"
+EMTOL=`awk 'BEGIN {emtol = 10000} /emtol/ {emtol = $3+0} END {print emtol}' input/*.mdp`
+
+for i in {1..1000}; do
+    echo "Iteration #${i}" 
+
+    rm -rf clash
+    mkdir -p clash
+    cp -r input/* clash
+
+    cd clash
+        /home/kasson/gromacs/build2018/bin/gmx grompp -p *.top -f *.mdp -c ${GRO} -r ${GRO} -o min.tpr -n *.ndx -maxwarn 1 || exit 1
+        /home/kasson/gromacs/build2018/bin/gmx mdrun -deffnm min ${PFORCE_STAGE} -v 2>&1 | tee mdrun.log
+    cd ..
+
+    MAX_FORCE_ATOM=`awk -v e=${EMTOL} '/[Ss]tep/ && (/[Nn]a[Nn]/ || /[Ii]nf/) {print -1; exit} /Maximum force/ {if ($4 > e) print $(NF); else print 0}' clash/mdrun.log`
+
+    if [ -z ${MAX_FORCE_ATOM} ]; then
+        echo "Something went terribly wrong with the energy minimization"
+        echo "Atom positions of all atoms will be randomly changed by a small amount."
+
+python '-' ${GRO} << EOF
+import sys
+from random import random
+
+gro_in = open(sys.argv[1], 'r')
+gro_out = open('input/' + sys.argv[1], 'w')
+
+gro_out.write(gro_in.readline())
+atom_count_str = gro_in.readline()
+atom_count = int(atom_count_str)
+gro_out.write(atom_count_str)
+
+for e, line in zip(range(atom_count), gro_in):
+    const = line[:20]
+    x = float(line[20:28]) + (random() - 0.5) / 10
+    y = float(line[28:36]) + (random() - 0.5) / 10
+    z = float(line[36:44]) + (random() - 0.5) / 10
+    gro_out.write('{:s}{:8.3f}{:8.3f}{:8.3f}\n'.format(const, x, y, z))
+else:
+    gro_out.write(gro_in.readline())
+    gro_out.close()
+    gro_in.close()
+EOF
+
+        PFORCE_STAGE="-pforce 1e20 -nsteps 1"
+
+    elif [ ${MAX_FORCE_ATOM} -lt 0 ]; then
+        echo "Atoms with non-finite forces were identified."
+
+python '-' ${GRO} << EOF
+import sys
+from random import random
+
+bad_atoms = []
+with open('clash/mdrun.log', 'r') as f:
+    for line in f:
+        # remove empty spaces on the sides of the string and the line break
+        s = line.strip()
+
+        # find atom with nan energy
+        if s[:4] == 'step' and ('inf' in s or 'nan' in s):
+            bad_atoms.append(int(s.split()[3]))
+
+
+gro_in = open('clash/' + sys.argv[1], 'r')
+gro_out = open('input/' + sys.argv[1], 'w')
+bad_atoms = set(bad_atoms)
+
+# start numbering at -1 due to the gro file header
+# number of the first atom is then one
+for e, line in enumerate(gro_in, -1):
+    if e in bad_atoms:
+        print(e)
+        const = line[:20]
+        x = float(line[20:28]) + (random() - 0.5) / 2
+        y = float(line[28:36]) + (random() - 0.5) / 2
+        z = float(line[36:44]) + (random() - 0.5) / 2
+        gro_out.write('{:s}{:8.3f}{:8.3f}{:8.3f}\n'.format(const, x, y, z))
+    else:
+        gro_out.write(line)
+else:
+    gro_out.close()
+    gro_in.close()
+EOF
+
+        PFORCE_STAGE="-pforce 1e20 -nsteps 1"
+
+    elif [ ${MAX_FORCE_ATOM} -gt 0 ]; then
+        echo "Configuration with no atoms with non-finite forces was already found - minimization with autoremoval of steric clashes will proceed."
+
+        if [ -z "${PFORCE_STAGE}" ]; then
+            awk -v x="$((RANDOM%11-5))" -v y="$((RANDOM%11-5))" -v z="$((RANDOM%11-5))" -v n="${ATOM_INDEX}" 'BEGIN {FIELDWIDTHS="5 5 5 5 8 8 8 8 8 8"} NR-2 == n {$0 = sprintf("%5d%-5s%5s%5d%8.3f%8.3f%8.3f", $1, $2, $3, $4%100000, $5+x/50, $6+y/50, $7+z/50)} {print}' clash/${GRO} > input/${GRO}
+        fi
+
+        PFORCE_STAGE=""
+
+    else
+        mv clash/${GRO} `basename ${GRO} .gro`_fixed.gro
+        break
+    fi
+done
+
+rm -rf clash
+
